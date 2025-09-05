@@ -4,7 +4,14 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/maroon-grants-story/',  // Add this line
+  base: '/maroon-grants-story/',
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html')
+      }
+    }
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
