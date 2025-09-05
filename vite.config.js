@@ -4,6 +4,7 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  base: '/maroon-grants-story/',  // Add this line
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
