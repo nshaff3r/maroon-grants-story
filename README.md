@@ -49,4 +49,4 @@ The project is set up with:
 - D3.js for data visualizations
 - Styled Components for styling
 - Scrollama for scroll-based interactions
-- Vite for fast development and optimized builds # maroon-grants-story
+- Vite for fast development and optimized builds
