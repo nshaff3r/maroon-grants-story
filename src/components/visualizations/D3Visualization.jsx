@@ -1,7 +1,40 @@
 import React, { useEffect, useReducer, useRef } from 'react';
+import { titleCase } from "text-title-case";
 import * as d3 from 'd3';
   
-const D3Visualization = ({ currentStepIndex }) => {
+function wrapText(text, string, textWidth, width, fontSize, yOffset = 0) {
+  const words = string.split(/\s+/);
+  let line = [];
+  let lineNumber = 0;
+  
+  words.forEach(word => {
+    line.push(word);
+    const testLine = line.join(" ");
+    
+    // Rough estimate: 8px per character
+    if (testLine.length * textWidth > width && line.length > 1) {
+      line.pop();
+      text.append("tspan")
+        .attr("x", text.attr("x"))
+        .attr("dy", lineNumber === 0 ? yOffset : "1.2em")
+        .attr("font-size", fontSize)
+        .text(line.join(" "));
+      line = [word];
+      lineNumber++;
+    }
+  });
+  
+  // Add the last line
+  if (line.length > 0) {
+    text.append("tspan")
+      .attr("x", text.attr("x"))
+      .attr("dy", lineNumber === 0 ? 0 : "1.2em")
+      .text(line.join(" "))
+      .attr("font-size", fontSize);
+  }
+}
+
+const D3Visualization = ({ currentStepIndex, direction }) => {
   const svgRef = useRef();
   const outerRectsRef = useRef();
   const innerRectsRef = useRef();
@@ -10,18 +43,35 @@ const D3Visualization = ({ currentStepIndex }) => {
   const grantNewValuesRef = useRef();
   const categoryTitlesRef = useRef();
   const categoryTotalsRef = useRef();
-  const isShowingActual = currentStepIndex >= 2;
-  const isZoomed = currentStepIndex >= 3;
-  const reZoomed = currentStepIndex >= 5;
-  const endDisplay = currentStepIndex == 8;
+  const initialState = currentStepIndex >= 0 && currentStepIndex < 2;
+  const outlaysState = currentStepIndex >= 2 && currentStepIndex < 3;
+  const outlaysAmountState = currentStepIndex >= 3 && currentStepIndex < 4;
+  const zoomedState = currentStepIndex >= 4 && currentStepIndex < 6;
+  const zoomedAmountState = currentStepIndex >= 6 && currentStepIndex < 10;
+  const reZoomed = currentStepIndex >= 10;
+  const endDisplay = currentStepIndex == 10;
   const width = 480;
+
   const height = 640;
+  const [resize, setResize] = React.useState(window.innerWidth < 400);
+
+  window.addEventListener("resize", () => {
+    setResize(window.innerWidth < 400);
+  });
+
+  useEffect(() => {
+    if (resize) {
+      d3.select(svgRef.current).attr("viewBox", `0 140 ${width} ${height}`);
+    } else {
+      d3.select(svgRef.current).attr("viewBox", `0 100 ${width} ${height}`);
+    }
+  }, [resize]);
 
   useEffect(() => {
     const svg = d3
       .select(svgRef.current)
-      .attr("viewBox", `0 105 ${width} ${height}`)
-      .attr("preserveAspectRatio", "xMidYMid meet")
+      .attr("viewBox", `0 100 ${width} ${height}`)
+      // .attr("preserveAspectRatio", "xMidYMid meet")
     svg.selectAll("*").remove();
     
     const g = svg.append("g")
@@ -39,18 +89,19 @@ const D3Visualization = ({ currentStepIndex }) => {
       .style("font-size", "12px")
       .style("pointer-events", "none")
       .style("z-index", "1000")
-    
-    d3.csv("/data/data.csv").then(data => {
+    d3.csv(`${import.meta.env.BASE_URL}data/data.csv`).then(data => {
       data.forEach(d => {
         d.Grant_Amount = parseFloat(d["Grant Amount"].replace(/[$,]/g, ''));
+        d.Title = d["New Title"];
         d.Actual_Amount = parseFloat(d["actual"].replace(/[$,]/g, ''));
+        d.Lost_Amount = d.Grant_Amount - d.Actual_Amount;
       });
 
       // Get unique categories to create parent nodes
       const categories = [...new Set(data.map(d => d.Category))];
 
       
-      const bottomCategories = [[['infectious diseases and COVID-19', 0, 0.3], ['health disparities', 250, 0.3]], [['chronic conditions', 0, 2], ['neuroscience and mental health',250, 2]]]
+      const bottomCategories = [[['infectious diseases and COVID-19', 0, 0.3], ['health disparities and accessibility', 250, 0.3]], [['chronic conditions',0, 2], ['neuroscience and mental health',250, 2]]]
       // Create an array with root, category nodes, and data nodes
       const hierarchyData = [
         // Add root node
@@ -86,11 +137,10 @@ const D3Visualization = ({ currentStepIndex }) => {
         .paddingTop(50)
         .round(false)
         (root);
-
-      // Create color scale for different categories
+      
       const colorScale = d3.scaleOrdinal()
         .domain(categories)
-        .range(d3.schemeSet3);
+        .range(d3.schemeSet3.slice(2)); // Skip the first color
 
       // Draw outer rectangles for each leaf (grant amounts)
       outerRectsRef.current = g.selectAll("rect.outer")
@@ -99,17 +149,20 @@ const D3Visualization = ({ currentStepIndex }) => {
         .attr("class", "outer")
         .attr('x', d => {
           const matchingCategory = bottomCategories.flat().find(c => c[0] === d.data.Category);
-          const buffer1 = d.data.Title.includes("Crossing scales to predict") ? 50 : 0
-          const buffer2 = d.data.Title.includes("Spatiotemporal models of neural") ? 14 : 0
-          const buffer = buffer1 + buffer2
+          const title = d.data.Title.toLowerCase();
+          const buffer1 = title.includes("crossing scales to predict") ? 49 : 0
+          const buffer2 = title.includes("spatiotemporal models of neural") ? 10 : 0
+          const buffer3 = title.includes("community trauma") ? 3.5 : 0
+          const buffer4 = title.includes("spatiotemporal models") ? 3.5 : 0
+          const buffer = buffer1 + buffer2 + buffer3 + buffer4;
           return matchingCategory ? matchingCategory[1] + buffer: d.x0
         })
         .attr('y', d => {
           const matchingCategory = bottomCategories.flat().find(c => c[0] === d.data.Category);
           return  matchingCategory ? 685 + matchingCategory[2] * 50 : d.y0
         })
-        .attr("width", d => d.x1 - d.x0)
-        .attr('height', d => Math.max(5, d.y1 - d.y0))
+        .attr("width", d => Math.max(d.x1 - d.x0, 0))
+        .attr('height', d => Math.max(d.y1 - d.y0, 2))
         .style("stroke", "none")
         .style("fill", d => colorScale(d.data.Category))
         .style("opacity", 1);
@@ -122,9 +175,12 @@ const D3Visualization = ({ currentStepIndex }) => {
         .attr("class", "inner")
         .attr('x', d => {
           const matchingCategory = bottomCategories.flat().find(c => c[0] === d.data.Category);
-          const buffer1 = d.data.Title.includes("Crossing scales to predict") ? 50 : 0
-          const buffer2 = d.data.Title.includes("Spatiotemporal models of neural") ? 14 : 0
-          const buffer = buffer1 + buffer2
+          const title = d.data.Title.toLowerCase();
+          const buffer1 = title.includes("crossing scales to predict") ? 49 : 0
+          const buffer2 = title.includes("spatiotemporal models of neural") ? 10 : 0
+          const buffer3 = title.includes("community trauma") ? 3.5 : 0
+          const buffer4 = title.includes("spatiotemporal models") ? 3.5 : 0
+          const buffer = buffer1 + buffer2 + buffer3 + buffer4;
           return matchingCategory ? matchingCategory[1] + buffer: d.x0
         })
         .attr('y', d => {
@@ -150,31 +206,36 @@ const D3Visualization = ({ currentStepIndex }) => {
         .attr("class", "title")
         .attr('x', d => {
           const matchingCategory = bottomCategories.flat().find(c => c[0] === d.data.Category);
-          return matchingCategory ? matchingCategory[1] + 5: d.x0+5
+          return matchingCategory ? matchingCategory[1] + 13.9: d.x0+5
         })
         .attr('y', d => {
           const matchingCategory = bottomCategories.flat().find(c => c[0] === d.data.Category);
-          return  matchingCategory ? 705 + matchingCategory[2] * 50 : d.y0+15
+          return  matchingCategory ? 698 + matchingCategory[2] * 50 : d.y0+33
         })
-        .text(d => {
+        .each(function(d) {
+          const text = d3.select(this);
           const width = d.x1 - d.x0;
-          const height = d.y1 - d.y0;
-          let title = d.data.NewTitle;
-        
-          // limit characters based on width
-          const maxChars = Math.floor(width / 8); // 8px per char approx
-          if (title.length > maxChars) {
-            title = title.slice(0, maxChars);
+          let title = titleCase(d.data.Title);
+          
+          if (title.includes("Understanding Political Economy")) {
+            title = "Understanding political economy, industrial organization, and recruitment into organized crime in Colombia."
+            wrapText(text, title, 4, width - 10, 9, 0);
+            return title;
+          } else if (title.includes("Understanding the Impact")) {
+            title = "Understanding the Impact of Domestic Extremist Organizations Narratives of Revolutionary Patriotism on US Military Audiences."
+            wrapText(text, title, 3.1, width - 10, 6.2, -5);
+            return title;
+          } else if (title.includes("Spatiotemporal Models")) {
+            title = "Spatiotemporal Models of Neural Coding in the Vestibular Periphery."
+            wrapText(text, title, .41, width, .85, -8);
+            return title;
+          } else {
+            return ""
           }
-        
-          // Capitalize first letter safely
-          title = title.charAt(0).toUpperCase() + title.slice(1).toLowerCase();
-        
-          return (width > 100 && height > 50) ? title + "..." : "";
-        })   
-        .attr("font-size", "12px")
-        .attr("fill", "black")
-        .style("font-family", "Arial");
+          
+        }) 
+        .style("font-family", "Georgia")
+        .style("opacity", 0);
 
       // Add grant amount values
       grantValuesRef.current = g.selectAll("text.grant-value")
@@ -183,21 +244,20 @@ const D3Visualization = ({ currentStepIndex }) => {
         .attr("class", "grant-value")
         .attr('x', d => {
           const matchingCategory = bottomCategories.flat().find(c => c[0] === d.data.Category);
-          return matchingCategory ? matchingCategory[1] + 5: d.x0+5
+          return matchingCategory ? matchingCategory[1] + 5: d.x0+7
         })
         .attr('y', d => {
           const matchingCategory = bottomCategories.flat().find(c => c[0] === d.data.Category);
-          return matchingCategory ? 700 : d.y0+30
+          return matchingCategory ? matchingCategory[2] * 50 + 690 : ( (d.y1 - d.y0) < 20 ? d.y0 + 8 : d.y0 + 18)
         })
         .text(d => {
-          const width = d.x1 - d.x0;
-          const height = d.y1 - d.y0;
-          if (width < 100 || height < 30) return "";
           return (d.data.Grant_Amount / 1000000).toFixed(2) + "M";
         })
-        .attr("font-size", "11px")
+        .attr("font-size", d => {
+          const matchingCategory = bottomCategories.flat().find(c => c[0] === d.data.Category);
+          return matchingCategory ? 0 : Math.min(12, (d.x1 - d.x0) / 5)
+        })
         .attr("fill", "gray")
-        .style("opacity", 1)
 
       // Add actual values (only visible when smaller is true)
       grantNewValuesRef.current = g.selectAll("text.actual-value")
@@ -206,19 +266,21 @@ const D3Visualization = ({ currentStepIndex }) => {
         .attr("class", "grant-value")
         .attr('x', d => {
           const matchingCategory = bottomCategories.flat().find(c => c[0] === d.data.Category);
-          return matchingCategory ? matchingCategory[1] : d.x0+5
+          return matchingCategory ? matchingCategory[1] + 5: d.x0+5
         })
         .attr('y', d => {
           const matchingCategory = bottomCategories.flat().find(c => c[0] === d.data.Category);
-          return  matchingCategory ? 550 + matchingCategory[2] * 50 : d.y0 + 30
+          return matchingCategory ? 100 :( (d.y1 - d.y0) < 20 ? d.y0 + 8 : d.y0 + 18)
         })
         .text(d => {
           const width = d.x1 - d.x0;
           const height = d.y1 - d.y0;
-          if (width < 100 || height < 30 ) return "";
-          return(d.data.Actual_Amount / 1000000).toFixed(2) + "M";
+          return("-" + (d.data.Lost_Amount / 1000000).toFixed(2) + "M");
         })
-        .attr("font-size", "11px")
+        .attr("font-size", d => {
+          const matchingCategory = bottomCategories.flat().find(c => c[0] === d.data.Category);
+          return matchingCategory ? 0 : Math.min(13, (d.x1 - d.x0) / 5)
+        })
         .attr("fill", "magenta")
         .style("opacity", 0);
 
@@ -238,12 +300,10 @@ const D3Visualization = ({ currentStepIndex }) => {
             return  matchingCategory ? 655 + matchingCategory[2] * 50 : d.y0+20
            })
            .text(d => {
-              // Convert to title case
-              return d.data.Title.split(' ')
-                .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-                .join(' ');
+              if (d.data.Title.toLowerCase().includes("covid")) return "Infectious Diseases and COVID-19";
+              return titleCase(d.data.Title);
            })
-           .attr("font-size", "12px")
+           .attr("font-size", "12.5px")
            .attr("font-weight", "bold")
            .attr("fill", "maroon");
 
@@ -267,13 +327,10 @@ const D3Visualization = ({ currentStepIndex }) => {
              return "";
            })
            .attr("font-size", "14px")
-           .attr("fill", "gray")
+           .attr("fill", "black")
 
-        opacityChangeEffect(0);
-        zoomChangeEffect(0);
-        reZoomChangeEffect(0);
-        endDisplayEffect(0);
 
+      stateEffects(currentStepIndex, direction, 0);
 
     }).catch(error => {
       console.error("Error loading the CSV file:", error);
@@ -285,54 +342,43 @@ const D3Visualization = ({ currentStepIndex }) => {
     
   }, []);
 
-    const opacityChangeEffect = (duration = 2000) => {
-      innerRectChange(outerRectsRef, 0.3, 1, duration);
-      innerRectChange(innerRectsRef, 1, 0, duration);
-      innerRectChange(grantValuesRef, 0, 1, duration);
-      innerRectChange(grantNewValuesRef, 1, 0, duration);
-    }
-    
-    const zoomChangeEffect = (duration = 2000) => {
+
+    const zoomChangeEffect = (duration, x, y, scale, grant, category, font = false) => {
       const g = d3.select(svgRef.current).select("g");
-      if (isZoomed) {
-        const scale = 2.26
-        const x = 0
-        const y = -1000
 
-        g.transition()
-          .duration(duration)
-          .attr("transform", `translate(${x},${y}) scale(${scale})`);
 
-        setOpacity(categoryTitlesRef, "national security", 0.1, duration);
-        setOpacity(grantTitlesRef, "How Is Organized Crime Organized", 0.1, duration);
-        setOpacity(categoryTotalsRef, "national security", 0.1, duration);
-        setOpacity(innerRectsRef, "", 0, duration);
-        setOpacity(outerRectsRef, "How Is Organized Crime Organized", 0.1, duration);
-        setOpacity(grantValuesRef, "How Is Organized Crime Organized", 0, duration);
-        setOpacity(grantNewValuesRef, "", 0, duration);
-          
-      } else {
-        g.transition()
-          .duration(duration)
-          .attr("transform", "translate(0,0) scale(1)");
-
-        opacityChangeEffect();
-
-        setOpacity(grantTitlesRef, "", 1, duration);
-        setOpacity(categoryTotalsRef, "", 1, duration);
-        setOpacity(categoryTitlesRef, "", 1, duration);
-      }
-   } 
-
-    const innerRectChange = (selectionRef, trueValue, falseValue, duration) => {
-      if (!selectionRef.current) return;
-      selectionRef.current
-        .transition()
+      g.transition()
         .duration(duration)
-        .style("opacity", isShowingActual ? trueValue : falseValue);
-    };
+        .attr("transform", `translate(${x},${y}) scale(${scale})`);
 
-    const setOpacity = (selectionRef, title, falseValue, duration) => {
+      setOpacity(categoryTitlesRef, category, 0.1, duration);
+      setOpacity(grantTitlesRef, grant, 0, duration);
+      setOpacity(categoryTotalsRef, category, 0.1, duration);
+      setOpacity(innerRectsRef, "", 0, duration);
+      setOpacity(outerRectsRef, grant, 0.1, duration);
+      setOpacity(grantNewValuesRef, "", 0, duration);
+      if (font) {
+        setFontAndOpacity(grantValuesRef, grant, 0, duration, 1);
+      } else {
+        setOpacity(grantValuesRef, grant, 0, duration, 1);
+      }
+      }
+      // else {
+      //   g.transition()
+      //     .duration(duration)
+      //     .attr("transform", "translate(0,0) scale(1)");
+
+      //   opacityChangeEffect(2000, true);
+
+      //   setOpacity(categoryTotalsRef, "", 1, duration);
+      //   setOpacity(grantTitlesRef, "", 0, duration);
+      //   setOpacity(categoryTitlesRef, "", 1, duration);
+      // }
+  //  } 
+
+
+
+    const setOpacity = (selectionRef, title, falseValue, duration, trueValue = 1) => {
       if (!selectionRef.current) return;
       if (title === "") {
         selectionRef.current
@@ -343,148 +389,247 @@ const D3Visualization = ({ currentStepIndex }) => {
         selectionRef.current
           .transition()
           .duration(duration)
-          .style("opacity", d => d.data.Title.includes(title) ? 1 : falseValue);
+          .style("opacity", d => d.data.Title.includes(title) ? trueValue : falseValue)
+        }
+    }
+
+    const setFontAndOpacity = (selectionRef, title, falseValue, duration, trueValue = 1, reset = false) => {
+      if (!selectionRef.current) return;
+      if (reset) {
+        selectionRef.current
+        .filter(d => d.data.Title.includes(title))
+        .attr("font-size", 0);
+      } else {
+        selectionRef.current
+          .filter(d => d.data.Title.includes(title))
+          .attr("font-size", 1.2)
+          .attr("x", 264)
+          .attr("y", 786.5);
+          
+        selectionRef.current
+          .transition()
+          .duration(duration)
+          .style("opacity", d => d.data.Title.includes(title) ? trueValue : falseValue);
       }
     }
 
-    const reZoomChangeEffect = (duration = 2000) => {
+    const reZoomChangeEffect = (duration, duration2,x, y, scale, grant, category) => {
       const g = d3.select(svgRef.current).select("g");
-      if (reZoomed) {
-        const scale = 3
-        const x = -910
-        const y = -100
 
-        g.transition()
-          .duration(duration)
-          .attr("transform", "translate(0,0) scale(1)")
-          .transition()
-          .duration(duration)
-          .attr("transform", `translate(${x},${y}) scale(${scale})`);
-
-        setOpacity(categoryTitlesRef, "educational", 0.1, duration);
-        setOpacity(categoryTotalsRef, "educational", 0.1, duration);
-        setOpacity(grantTitlesRef, "Using Social", 0.1, duration);
-        setOpacity(innerRectsRef, "", 0, duration);
-        setOpacity(outerRectsRef, "Using Social", 0.1, duration);
-        setOpacity(grantValuesRef, "Using Social", 0, duration);
-        setOpacity(grantNewValuesRef, "", 0, duration);
-        
-      } else {
-        g.transition()
-          .duration(duration)
-          .attr("transform", "translate(0,0) scale(1)");
-
-        opacityChangeEffect();
-
-        setOpacity(grantTitlesRef, "", 1, duration);
-        setOpacity(categoryTotalsRef, "", 1, duration);
-        setOpacity(categoryTitlesRef, "", 1, duration);
-      }
+      g.transition()
+        .duration(duration)
+        .attr("transform", "translate(0,0) scale(1)")
+        .transition()
+        .duration(duration2)
+        .attr("transform", `translate(${x},${y}) scale(${scale})`);
+  
+      
+      setOpacity(categoryTitlesRef, category, 0.1, duration);
+      setOpacity(categoryTotalsRef, category, 0.1, duration);
+      setOpacity(grantTitlesRef, grant, 0, duration);
+      setOpacity(innerRectsRef, "", 0, duration);
+      setOpacity(outerRectsRef, grant, 0.1, duration);
+      setFontAndOpacity(grantValuesRef, grant, 0, duration, 1);
+      setOpacity(grantNewValuesRef, "", 0, duration);
    } 
 
-   const endDisplayEffect = (duration = 2000) => {
-    const g = d3.select(svgRef.current).select("g");
-    const tooltip = d3.select("body").select("div.d3-tooltip");
+//    const endDisplayEffect = (duration = 2000) => {
+//     const g = d3.select(svgRef.current).select("g");
+//     const tooltip = d3.select("body").select("div.d3-tooltip");
     
-    if (endDisplay) {
+//     if (endDisplay) {
+//       g.transition()
+//         .duration(duration)
+//         .attr("transform", "translate(0,0) scale(1)");
+//       setOpacity(categoryTitlesRef, "educational", 1, duration);
+//       setOpacity(categoryTotalsRef, "educational", 1, duration);
+//       // setOpacity(grantTitlesRef, "Using Social", 1, duration);
+//       setOpacity(innerRectsRef, "", 1, duration);
+//       setOpacity(outerRectsRef, "Using Social", 0.3, duration);
+//       setOpacity(grantValuesRef, "", 0, duration);
+//       setOpacity(grantNewValuesRef, "", 1, duration);
+
+//       // Add tooltip functionality to both outer and inner rectangles
+//       const addTooltipEvents = (selection) => {
+//         selection
+//           .style("cursor", "pointer")
+//           .on("mouseover", function(event, d) {
+//             tooltip.style("visibility", "visible")
+//               .html(`
+//                 <strong>${d.data.Title}</strong><br/>
+//                 Category: ${d.data.Category}<br/>
+//                 Grant Amount: $${(d.data.Grant_Amount / 1000000).toFixed(2)}M<br/>
+//                 Actual Amount: $${(d.data.Actual_Amount / 1000000).toFixed(2)}M
+//               `)
+//           })
+//           .on("mousemove", function(event) {
+//             tooltip.style("top", (event.pageY - 10) + "px")
+//               .style("left", (event.pageX + 10) + "px")
+//           })
+//           .on("mouseout", function(event) {
+//             tooltip.style("visibility", "hidden")
+//           })
+//           .on("touchstart", function(event, d) {
+//             event.preventDefault();
+//             tooltip.style("visibility", "visible")
+//               .html(`
+//                 <strong>${d.data.Title}</strong><br/>
+//                 Category: ${d.data.Category}<br/>
+//                 Grant Amount: $${(d.data.Grant_Amount / 1000000).toFixed(2)}M<br/>
+//                 Actual Amount: $${(d.data.Actual_Amount / 1000000).toFixed(2)}M
+//               `)
+//           })
+//           .on("touchmove", function(event) {
+//             event.preventDefault();
+//             tooltip.style("top", (event.touches[0].clientY - 10) + "px")
+//               .style("left", (event.touches[0].clientX + 10) + "px")
+//           })
+//           .on("touchend", function(event) {
+//             event.preventDefault();
+//             tooltip.style("visibility", "hidden")
+//           });
+//       };
+
+//       if (outerRectsRef.current) {
+//         addTooltipEvents(outerRectsRef.current);
+//       }
+//       if (innerRectsRef.current) {
+//         addTooltipEvents(innerRectsRef.current);
+//       }
+
+//     } else {
+//       // Remove tooltip functionality from both outer and inner rectangles
+//       const removeTooltipEvents = (selection) => {
+//         selection
+//           .style("cursor", "default")
+//           .on("mouseover", null)
+//           .on("mousemove", null)
+//           .on("mouseout", null)
+//           .on("touchstart", null)
+//           .on("touchmove", null)
+//           .on("touchend", null);
+//       };
+
+//       if (outerRectsRef.current) {
+//         removeTooltipEvents(outerRectsRef.current);
+//       }
+//       if (innerRectsRef.current) {
+//         removeTooltipEvents(innerRectsRef.current);
+//       }
+//       tooltip.style("visibility", "hidden");
+//       reZoomChangeEffect(0);
+//     }
+//    }
+
+  //  const states = [initialState, outlaysState, outlaysAmountState, zoomedState, zoomedAmountState, reZoomed, endDisplay];
+  
+
+
+  const innerRectChange = (selectionRef, opacity, duration) => {
+    if (!selectionRef.current) return;
+    selectionRef.current
+      .transition()
+      .duration(duration)
+      .style("opacity", opacity);
+  };
+
+
+  const stateEffects = (step, direction, duration = 2000) => {
+    const g = d3.select(svgRef.current).select("g");
+    if (step < 2) {
+      // Initial state
+      innerRectChange(outerRectsRef, 1, duration);
+      innerRectChange(innerRectsRef, 0, duration);
+      innerRectChange(grantValuesRef, 1, duration);
+      innerRectChange(grantNewValuesRef, 0, duration);
+
+      // Properly zoomed out
       g.transition()
         .duration(duration)
         .attr("transform", "translate(0,0) scale(1)");
-      setOpacity(categoryTitlesRef, "educational", 1, duration);
-      setOpacity(categoryTotalsRef, "educational", 1, duration);
-      setOpacity(grantTitlesRef, "Using Social", 1, duration);
-      setOpacity(innerRectsRef, "", 1, duration);
-      setOpacity(outerRectsRef, "Using Social", 0.3, duration);
-      setOpacity(grantValuesRef, "", 0, duration);
-      setOpacity(grantNewValuesRef, "", 1, duration);
 
-      // Add tooltip functionality to both outer and inner rectangles
-      const addTooltipEvents = (selection) => {
-        selection
-          .style("cursor", "pointer")
-          .on("mouseover", function(event, d) {
-            tooltip.style("visibility", "visible")
-              .html(`
-                <strong>${d.data.Title}</strong><br/>
-                Category: ${d.data.Category}<br/>
-                Grant Amount: $${(d.data.Grant_Amount / 1000000).toFixed(2)}M<br/>
-                Actual Amount: $${(d.data.Actual_Amount / 1000000).toFixed(2)}M
-              `)
-          })
-          .on("mousemove", function(event) {
-            tooltip.style("top", (event.pageY - 10) + "px")
-              .style("left", (event.pageX + 10) + "px")
-          })
-          .on("mouseout", function(event) {
-            tooltip.style("visibility", "hidden")
-          })
-          .on("touchstart", function(event, d) {
-            event.preventDefault();
-            tooltip.style("visibility", "visible")
-              .html(`
-                <strong>${d.data.Title}</strong><br/>
-                Category: ${d.data.Category}<br/>
-                Grant Amount: $${(d.data.Grant_Amount / 1000000).toFixed(2)}M<br/>
-                Actual Amount: $${(d.data.Actual_Amount / 1000000).toFixed(2)}M
-              `)
-          })
-          .on("touchmove", function(event) {
-            event.preventDefault();
-            tooltip.style("top", (event.touches[0].clientY - 10) + "px")
-              .style("left", (event.touches[0].clientX + 10) + "px")
-          })
-          .on("touchend", function(event) {
-            event.preventDefault();
-            tooltip.style("visibility", "hidden")
-          });
-      };
+      setOpacity(categoryTotalsRef, "", 1, duration);
+      setOpacity(grantTitlesRef, "", 0, duration);
+      setOpacity(categoryTitlesRef, "", 1, duration);
 
-      if (outerRectsRef.current) {
-        addTooltipEvents(outerRectsRef.current);
-      }
-      if (innerRectsRef.current) {
-        addTooltipEvents(innerRectsRef.current);
-      }
-
-    } else {
-      // Remove tooltip functionality from both outer and inner rectangles
-      const removeTooltipEvents = (selection) => {
-        selection
-          .style("cursor", "default")
-          .on("mouseover", null)
-          .on("mousemove", null)
-          .on("mouseout", null)
-          .on("touchstart", null)
-          .on("touchmove", null)
-          .on("touchend", null);
-      };
-
-      if (outerRectsRef.current) {
-        removeTooltipEvents(outerRectsRef.current);
-      }
-      if (innerRectsRef.current) {
-        removeTooltipEvents(innerRectsRef.current);
-      }
-      tooltip.style("visibility", "hidden");
-      reZoomChangeEffect(0);
+    } else if (2 <= step && step < 3) {
+      innerRectChange(outerRectsRef, .3, duration);
+      innerRectChange(innerRectsRef, 1, duration);
+      innerRectChange(grantValuesRef, 1, duration);
+      innerRectChange(grantNewValuesRef, 0, duration);
+    } else if (3 <= step && step <= 5) {
+      innerRectChange(outerRectsRef, .3, duration);
+      innerRectChange(innerRectsRef, 1, duration);
+      innerRectChange(grantValuesRef, 0, duration);
+      innerRectChange(grantNewValuesRef, 1, duration);
+      g.transition()
+      .duration(duration)
+      .attr("transform", "translate(0,0) scale(1)");
+      setOpacity(categoryTotalsRef, "", 1, duration);
+      setOpacity(grantTitlesRef, "", 0, duration);
+      setOpacity(categoryTitlesRef, "", 1, duration);
+    } else if (6 <= step && step < 7) {
+      zoomChangeEffect(duration, 0, -1000, 2.26, "Understanding political economy", "national security");
+    } else if (7 <= step && step < 8) {
+      zoomChangeEffect(duration, 0, -1000, 2.26, "Understanding political economy", "national security");
+      setOpacity(grantValuesRef, "Understanding political economy", 0, duration, 0);
+      setOpacity(grantNewValuesRef, "Understanding political economy", 0, duration, 1);
+      setOpacity(outerRectsRef, "Understanding political economy", 0.1, duration, .3);
+      setOpacity(innerRectsRef, "Understanding political economy", 0, duration, 1);
     }
-   }
+    else if (8 <= step && step < 10) {
+      zoomChangeEffect(duration, -990, -2500, 4.8, "Understanding the Impact", "national security");
+    } else if (10 <= step && step < 11) {
+      zoomChangeEffect(duration, -990, -2500, 4.8, "Understanding the Impact", "national security");
+      setOpacity(grantValuesRef, "Understanding the Impact", 0, duration, 0);
+      setOpacity(grantNewValuesRef, "Understanding the Impact", 0, duration, 1);
+      setOpacity(outerRectsRef, "Understanding the Impact", 0.1, duration, .3);
+      setOpacity(innerRectsRef, "Understanding the Impact", 0, duration, 1);
+      setFontAndOpacity(grantNewValuesRef, "Spatiotemporal models", 0, duration, 1, true);
+      setFontAndOpacity(grantValuesRef, "Spatiotemporal models", 0, duration, 1, true);
+    }
+    else if (11 <= step && step < 12) {
+      if (duration == 0) {
+        reZoomChangeEffect(0, 0, -10500, -31200, 40, "Spatiotemporal models", "neuroscience");
+      } else if (direction == "down") {
+        reZoomChangeEffect(duration, 4000, -10500, -31200, 40, "Spatiotemporal models", "neuroscience");
+      } else {
+        zoomChangeEffect(duration, -10500, -31200, 40, "Spatiotemporal models", "neuroscience", true);
+      }
+    } else if (12 <= step && step < 13) {
+        zoomChangeEffect(duration, -10500, -31200, 40, "Spatiotemporal models", "neuroscience", true);
+    } else if (13 <= step && step < 14) {
+      zoomChangeEffect(duration, -10500, -31200, 40, "Spatiotemporal models", "neuroscience", true);
+      setOpacity(grantValuesRef, "Spatiotemporal models", 0, duration, 0);
+      setFontAndOpacity(grantNewValuesRef, "Spatiotemporal models", 0, duration);
+      setOpacity(outerRectsRef, "Spatiotemporal models", 0.1, duration, .3);
+      setOpacity(innerRectsRef, "Spatiotemporal models", 0, duration, 1);
+    }
+  }
 
   useEffect(() => {
-    opacityChangeEffect();
-  }, [isShowingActual]);
+    stateEffects(currentStepIndex, direction);
+  }, [currentStepIndex]);
 
-  useEffect(() => {
-    zoomChangeEffect();
-  }, [isZoomed]);
+  // useEffect(() => {
+  //   opacityChangeEffect(2000, true);
+  // }, [actualTextChange]);
 
-  useEffect(() => {
-    reZoomChangeEffect();
-  }, [reZoomed]);
+  // useEffect(() => {
+  //   zoomChangeEffect();
+  // }, [isZoomed]);
 
-  useEffect(() => {
-    endDisplayEffect();
-  }, [endDisplay]);
+  // useEffect(() => {
+  //   zoomTitleChange();
+  // }, [isZoomTitleChange]);
+
+  // useEffect(() => {
+  //   reZoomChangeEffect();
+  // }, [reZoomed]);
+
+  // useEffect(() => {
+  //   endDisplayEffect();
+  // }, [endDisplay]);
 
       return (
         <div className="chart-container">
