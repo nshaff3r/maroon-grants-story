@@ -4,11 +4,12 @@ export const preBody = [
 ];
 
 export const scrollOne = [
-  "Pictured here are all the terminated grants that the Maroon was able to identify using publicly available data.",
-  "These 31 grants amount to nearly $25.5 million.",
-  "Only $8.4 million was delivered to researchers before the terminations.",
-  "The government slashed the rest, with losses totaling roughly $17.1 million.",
-  "Terminated multi-year National Institutes of Health grants due to be renewed in future years could have yielded an additional $5 million."
+  "According to a University spokesperson, approximately 65 grants have been terminated since January.",
+  "Pictured here are the 31 terminated grants that the Maroon was able to identify using publicly available data from federal databases and by speaking directly with researchers.",
+  "These 31 grants amount to nearly $24.9 million.",
+  "Only $8.2 million was delivered to researchers before the terminations.",
+  "The government slashed the rest, with losses totaling roughly $16.6 million.",
+  "Terminated multiyear NIH grants due to be renewed in future years could have yielded an additional $5 million."
 ];
 
 export const bodyOne = [
@@ -19,8 +20,8 @@ export const bodyOne = [
 ];
 
 export const scrollTwo = [
-  "Professor Chris Blattman was conducting a <a href='https://dtic.dimensions.ai/details/grant/grant.14882319?search_mode=content&search_text=HOW%20IS%20ORGANIZED%20CRIME%20ORGANIZED&search_type=kws&search_field=full_search'>study</a> on reducing gang recruitment and organized crime in Medellín, Colombia.",
-  "More than $2 million in funding to continue and expand that work, which was supposed to arrive in February and last for three years, never came."
+'Chris Blattman, a professor of public policy who studies global conflict, <a href="https://dtic.dimensions.ai/details/grant/grant.14882319?search_mode=content&search_text=HOW%20IS%20ORGANIZED%20CRIME%20ORGANIZED&search_type=kws&search_field=full_search">was conducting</a> a study on reducing gang recruitment and organized crime in Medellín, Colombia.',
+"More than $2 million in funding to continue and expand that work was supposed to arrive in February and last for three years but never came."
 ];
 
 export const bodyTwo = [
@@ -41,9 +42,9 @@ export const bodyTwo = [
 ];
 
 export const scrollThree = [
-    "Professor Robert Pape had roughly $200,000 of a $1 million grant left to spend.",
-    'Researchers were preparing to conduct “the most extensive survey ever done on support for political violence among U.S. military veterans,” Pape says.',
-    'Then in March, “the whole thing came to a halt.”'
+    "Robert Pape, a professor of political science specializing in international security affairs, had roughly $200,000 of a $1 million grant left to spend.",
+    'Researchers were preparing to conduct “the most extensive survey ever done on support for political violence among U.S. military veterans,” Pape said.',
+    'Then, in March, “the whole thing came to a halt.”'
 ];
 
 export const bodyThree = [
@@ -64,9 +65,9 @@ export const bodyThree = [
 ]
 
 export const scrollFour = [
-    "Olivia Lutz studies the vestibular system—the inner-ear mechanisms that control our sense of balance.",
+    "Olivia Lutz, a sixth-year computational neuroscience Ph.D. candidate, studies the vestibular system—the inner-ear mechanisms that control our sense of balance.",
     "Her work aimed to use data from previous experimental studies to put together models that could help researchers understand how to treat vertigo and vestibular migraines.",
-    "She lost roughly $16,000 of a $48,974 grant."
+    'Lutz lost roughly $16,000 of a $48,974 grant.'
 ]
 
 export const bodyFour = [
